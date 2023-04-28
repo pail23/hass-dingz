@@ -19,7 +19,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = [LED(c)]
 
     dimmers = await c.session.dimmer_config()
-    for (i, config) in enumerate(dimmers):
+    for i, config in enumerate(dimmers):
         if not config.available:
             continue
 

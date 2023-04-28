@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .api import Device, DingzSession, Info, State, SystemConfig
+from .api_v2 import DingzSessionV2
 from .const import DOMAIN, PLATFORMS
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ async def async_setup(hass, _config):
 
 class DingzCoordinator(DataUpdateCoordinator):
     data: State
-    session: DingzSession
+    session: DingzSession | DingzSessionV2
     info: Info
     device: Device
     system_config: SystemConfig
@@ -54,14 +55,27 @@ class DingzCoordinator(DataUpdateCoordinator):
         )
         coordinator.session = session
         await coordinator.__fetch_data()
-
         return coordinator
+
+
+async def get_api_version(client_session, host) -> int:
+    try:
+        async with client_session.get(f"{host}/api/v1/info") as resp:
+            info = Info.from_json(await resp.json())
+            return 2 if info is not None and info.version[0] == "2" else 1
+    except Exception as error:
+        logger.error(f"can't read the device version: {error}")
+    return 1
 
 
 async def setup_coordinator(hass, entry: ConfigEntry):
     host = entry.data["host"]
-
-    session = DingzSession(aiohttp_client.async_get_clientsession(hass), host)
+    client_session = aiohttp_client.async_get_clientsession(hass)
+    session = (
+        DingzSessionV2(client_session, host)
+        if await get_api_version(client_session, host) == 2
+        else DingzSession(client_session, host)
+    )
     coordinator = await DingzCoordinator.build(hass, session)
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
